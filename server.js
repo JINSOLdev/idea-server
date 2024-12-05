@@ -18,6 +18,8 @@ mongoose
 
 // 데이터 스키마 및 모델 정의
 const UserSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    emailAddress: { type: String, required: true },
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
 });
@@ -48,21 +50,23 @@ app.use(bodyParser.json());
 // JWT 인증 미들웨어
 const authenticateToken = (req, res, next) => {
     const token = req.header('Authorization')?.split(' ')[1];
-    if (!token) return res.status(401).json({ message: 'Access Denied' });
+
+    if (!token) return res.status(401).json({ message: 'Access token missing' });
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
         if (err) return res.status(403).json({ message: 'Invalid Token' });
-        req.user = user;
+        console.log('Authenticated user:', user); // 디버깅용 로그
+        req.user = user; // req.user에 토큰에서 파싱한 사용자 정보 저장
         next();
     });
 };
 
 // 회원가입
 app.post('/register', async (req, res) => {
-    const { username, password } = req.body;
+    const { name, emailAddress, username, password } = req.body;
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({ username, password: hashedPassword });
+        const newUser = new User({ name, emailAddress, username, password: hashedPassword });
         await newUser.save();
         res.status(201).json({ message: 'User registered' });
     } catch (err) {
@@ -85,6 +89,39 @@ app.post('/login', async (req, res) => {
         // 토큰을 헤더에 담아 응답
         res.setHeader('Authorization', `Bearer ${token}`);
         res.status(200).json({ message: 'Login successful' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 마이페이지
+app.get('/profile', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findOne({ username: req.user.username }).select('-password');
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        res.status(200).json(user);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 마이페이지 수정
+app.put('/profile', authenticateToken, async (req, res) => {
+    const { username, name, emailAddress } = req.body;
+
+    try {
+        // 현재 인증된 사용자
+        const user = await User.findOne({ username: username });
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // 업데이트할 필드
+        if (username) user.username = username;
+        if (name) user.name = name;
+        if (emailAddress) user.emailAddress = emailAddress;
+
+        await user.save();
+        res.status(200).json({ message: 'Profile updated successfully', user });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -114,13 +151,30 @@ app.get('/posts', async (req, res) => {
     }
 });
 
-// 게시글 상세 조회
+// 내가 쓴 글만 조회 (고정 경로 우선)
+app.get('/posts/myposts', authenticateToken, async (req, res) => {
+    try {
+        if (!req.user || !req.user.username) {
+            return res.status(400).json({ error: 'User not authenticated' });
+        }
+
+        const posts = await Post.find({ author: req.user.username });
+        res.json(posts);
+    } catch (err) {
+        console.error('Error fetching posts:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 게시글 상세 조회 (동적 경로는 아래에 배치)
 app.get('/posts/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const post = await Post.findById(id);
+        if (!post) return res.status(404).json({ message: 'Post not found' });
         res.json(post);
     } catch (err) {
+        console.error('Error fetching post:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
