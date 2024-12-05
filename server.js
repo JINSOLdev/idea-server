@@ -55,7 +55,7 @@ const authenticateToken = (req, res, next) => {
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
         if (err) return res.status(403).json({ message: 'Invalid Token' });
-        console.log('Authenticated user:', user); // 디버깅용 로그
+        // console.log('Authenticated user:', user); // 디버깅용 로그
         req.user = user; // req.user에 토큰에서 파싱한 사용자 정보 저장
         next();
     });
@@ -84,11 +84,28 @@ app.post('/login', async (req, res) => {
         const isValid = await bcrypt.compare(password, user.password);
         if (!isValid) return res.status(400).json({ message: 'Invalid credentials' });
 
-        const token = jwt.sign({ username: user.username }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        // JWT 토큰에 사용자 이름(name)을 포함하여 생성
+        const token = jwt.sign({ username: user.username, name: user.name }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
         // 토큰을 헤더에 담아 응답
         res.setHeader('Authorization', `Bearer ${token}`);
         res.status(200).json({ message: 'Login successful' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 관리자 회원조회
+app.get('/admin/users', authenticateToken, async (req, res) => {
+    try {
+        // JWT에서 추출된 사용자 정부가 'name; 필드를 확인하여 관리자인지 검사
+        if (req.user.name !== 'admin') {
+            return res.status(403).json({ message: 'Access denied. Admins only.' });
+        }
+
+        // 모든 사용자 조회
+        const users = await User.find().select('-password');
+        res.status(200).json(users);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
