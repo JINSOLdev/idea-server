@@ -111,6 +111,59 @@ app.get('/admin/users', authenticateToken, async (req, res) => {
     }
 });
 
+// 관리자 멤버 이름 수정
+app.put('/admin/users/:id', authenticateToken, async (req, res) => {
+    try {
+        // 관리자인지 확인
+        if (req.user.name !== 'admin') {
+            return res.status(403).json({ message: 'Access denied. Admins only.' });
+        }
+
+        const { id } = req.params;
+        const { name } = req.body;
+
+        if (!name) {
+            return res.status(400).json({ message: 'Name is required' });
+        }
+
+        const user = await User.findById(id);
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        user.name = name;
+        await user.save();
+
+        res.status(200).json({ message: 'User name updated successfully', user });
+    } catch (err) {
+        console.error('Error updating user name:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 관리자 멤버 삭제
+app.delete('/admin/users/:id', authenticateToken, async (req, res) => {
+    try {
+        // 관리자인지 확인
+        if (req.user.name !== 'admin') {
+            return res.status(403).json({ message: 'Access denied. Admins only.' });
+        }
+
+        const { id } = req.params;
+        const user = await User.findById(id);
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        await user.deleteOne();
+        res.status(200).json({ message: 'User deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting user:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
 // 마이페이지
 app.get('/profile', authenticateToken, async (req, res) => {
     try {
